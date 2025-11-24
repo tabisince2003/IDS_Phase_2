@@ -1,0 +1,313 @@
+---
+title: "Nutrition & Food Security Analysis: Pakistan (2000-2024)"
+author: "Data Analysis Report"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+Executive Summary
+This report presents a comprehensive analysis of malnutrition trends and related indicators in Pakistan from 2000 to 2024, combining data from UNICEF and FAOSTAT sources.
+
+Key Findings
+46.7% reduction in malnutrition rates (28.5% to 15.2%)
+
+Strong correlations between malnutrition, child stunting, and women anemia
+
+Infrastructure improvements coincide with malnutrition decline
+
+Mixed trends across different health indicators
+
+1. Introduction
+1.1 Project Overview
+Analysis of nutrition and food security indicators in Pakistan over a 24-year period to understand trends, relationships, and progress in combating malnutrition.
+
+1.2 Data Sources
+UNICEF: Malnutrition prevalence data (2000-2024)
+
+FAOSTAT: Multiple food security and nutrition indicators
+
+1.3 Methodology
+Data cleaning and integration
+
+Exploratory data analysis
+
+Correlation analysis
+
+Trend visualization
+
+{r
+# Load required libraries
+library(tidyverse)
+library(ggplot2)
+library(gridExtra)
+library(corrplot)
+library(knitr)
+library(DT)
+2. Data Preparation
+2.1 Data Loading and Cleaning
+{r
+# Load datasets
+unicef <- read.csv("UNICEF_malnutrition.csv")
+faostat <- read.csv("FAOSTAT_data_en_10-12-2025.csv")
+
+cat("UNICEF Data Dimensions:", dim(unicef), "\n")
+cat("FAOSTAT Data Dimensions:", dim(faostat), "\n")
+2.2 Data Processing
+{r
+# Define key indicators
+yearly_indicators <- c(
+  "Dietary energy supply used in the estimation of the prevalence of undernourishment (kcal/cap/day)",
+  "Prevalence of anemia among women of reproductive age (15-49 years) (percent)",
+  "Prevalence of obesity in the adult population (18 years and older) (percent)",
+  "Percentage of children under 5 years of age who are stunted (modelled estimates) (percent)",
+  "Political stability and absence of violence/terrorism (index)",
+  "Percentage of population using safely managed drinking water services (percent)",
+  "Percentage of population using at least basic sanitation services (percent)"
+)
+
+# Process FAOSTAT data
+faostat_yearly <- faostat %>%
+  filter(Item %in% yearly_indicators & !grepl("-", Year)) %>%
+  mutate(Year = as.numeric(Year)) %>%
+  select(Year, Item, Value, Unit) %>%
+  drop_na(Year)
+
+faostat_wide <- faostat_yearly %>%
+  pivot_wider(
+    names_from = Item,
+    values_from = Value,
+    values_fn = mean
+  )
+
+# Clean column names
+names(faostat_wide) <- gsub(" \\(percent\\)", "", names(faostat_wide))
+names(faostat_wide) <- gsub(" \\(modelled estimates\\)", "", names(faostat_wide))
+names(faostat_wide) <- gsub("Percentage of ", "", names(faostat_wide))
+names(faostat_wide) <- gsub("Prevalence of ", "", names(faostat_wide))
+names(faostat_wide) <- make.names(names(faostat_wide))
+
+# Merge datasets
+merged_data <- unicef %>%
+  inner_join(faostat_wide, by = "Year")
+2.3 Final Dataset
+{r
+# Create final cleaned dataset
+merged_data_clean <- merged_data %>%
+  select(Country, Year, Malnutrition_Percent, 
+         Dietary.energy.supply.used.in.the.estimation.of.the.prevalence.of.undernourishment..kcal.cap.day.,
+         Political.stability.and.absence.of.violence.terrorism..index.,
+         population.using.safely.managed.drinking.water.services,
+         population.using.at.least.basic.sanitation.services,
+         children.under.5.years.of.age.who.are.stunted,
+         obesity.in.the.adult.population..18.years.and.older.,
+         anemia.among.women.of.reproductive.age..15.49.years.)
+
+colnames(merged_data_clean) <- c("Country", "Year", "Malnutrition_Percent", "Dietary_Energy_Supply", 
+                                 "Political_Stability", "Safe_Water_Access", "Basic_Sanitation",
+                                 "Child_Stunting", "Adult_Obesity", "Women_Anemia")
+
+merged_data_combined <- merged_data_clean %>%
+  group_by(Year) %>%
+  summarise(
+    Country = first(Country),
+    Malnutrition_Percent = first(Malnutrition_Percent),
+    Dietary_Energy_Supply = first(na.omit(Dietary_Energy_Supply)),
+    Political_Stability = first(na.omit(Political_Stability)),
+    Safe_Water_Access = first(na.omit(Safe_Water_Access)),
+    Basic_Sanitation = first(na.omit(Basic_Sanitation)),
+    Child_Stunting = first(na.omit(Child_Stunting)),
+    Adult_Obesity = first(na.omit(Adult_Obesity)),
+    Women_Anemia = first(na.omit(Women_Anemia))
+  ) %>%
+  ungroup()
+
+final_data <- merged_data_combined %>%
+  filter(Year %in% c(2000, 2005, 2010, 2015, 2020, 2022, 2024)) %>%
+  arrange(Year)
+
+# Display final dataset
+DT::datatable(final_data, options = list(pageLength = 10), 
+              caption = "Final Cleaned Dataset for Analysis")
+3. Exploratory Data Analysis
+3.1 Malnutrition Trend Analysis
+{r
+p1 <- ggplot(final_data, aes(x = Year, y = Malnutrition_Percent)) +
+  geom_line(color = "red", size = 2) +
+  geom_point(size = 4, color = "red") +
+  geom_text(aes(label = paste0(Malnutrition_Percent, "%")), 
+            vjust = -1, size = 5, fontface = "bold") +
+  labs(title = "DECLINE IN MALNUTRITION IN PAKISTAN (2000-2024)",
+       subtitle = "Malnutrition percentage shows consistent decrease over 24 years",
+       x = "Year", y = "Malnutrition Percentage (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+        plot.subtitle = element_text(size = 12, hjust = 0.5),
+        axis.text = element_text(size = 10))
+
+print(p1)
+3.2 Multiple Indicators Comparison
+{r
+trend_data <- final_data %>%
+  select(Year, Malnutrition_Percent, Child_Stunting, Women_Anemia, Adult_Obesity) %>%
+  pivot_longer(cols = -Year, names_to = "Indicator", values_to = "Value")
+
+trend_data <- trend_data %>%
+  mutate(Indicator = case_when(
+    Indicator == "Malnutrition_Percent" ~ "Malnutrition",
+    Indicator == "Child_Stunting" ~ "Child Stunting",
+    Indicator == "Women_Anemia" ~ "Women Anemia", 
+    Indicator == "Adult_Obesity" ~ "Adult Obesity",
+    TRUE ~ Indicator
+  ))
+
+p2 <- ggplot(trend_data, aes(x = Year, y = Value, color = Indicator, group = Indicator)) +
+  geom_line(size = 1.5) +
+  geom_point(size = 3) +
+  facet_wrap(~Indicator, scales = "free_y", ncol = 2) +
+  labs(title = "TRENDS IN NUTRITION & HEALTH INDICATORS - PAKISTAN (2000-2024)",
+       y = "Percentage (%)", x = "Year") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(size = 10),
+        strip.text = element_text(size = 12, face = "bold"),
+        legend.position = "none")
+
+print(p2)
+3.3 Correlation Analysis
+{r
+# Calculate correlations
+cor_pairwise <- cor(final_data %>% 
+                     select(Malnutrition_Percent, Child_Stunting, Women_Anemia, 
+                            Adult_Obesity, Safe_Water_Access, Basic_Sanitation),
+                   use = "pairwise.complete.obs")
+
+# Create correlation plot
+corrplot(cor_pairwise, method = "color", type = "upper",
+         title = "CORRELATION MATRIX: Nutrition Indicators\nPakistan (2000-2024)",
+         mar = c(0, 0, 2, 0), tl.col = "black", tl.srt = 45,
+         tl.cex = 1.2, cl.cex = 1.0)
+
+# Display correlation table
+kable(round(cor_pairwise, 3), caption = "Correlation Coefficients Table")
+3.4 Key Relationships
+{r
+# Malnutrition vs Child Stunting
+p3 <- ggplot(final_data, aes(x = Child_Stunting, y = Malnutrition_Percent)) +
+  geom_point(size = 5, color = "blue", alpha = 0.8) +
+  geom_smooth(method = "lm", se = TRUE, color = "red", linetype = "dashed") +
+  geom_text(aes(label = Year), vjust = -0.8, size = 4, fontface = "bold") +
+  labs(title = "MALNUTRITION vs CHILD STUNTING",
+       subtitle = "Strong positive correlation observed",
+       x = "Child Stunting (%)", y = "Malnutrition (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+# Malnutrition vs Women Anemia
+p4 <- ggplot(final_data, aes(x = Women_Anemia, y = Malnutrition_Percent)) +
+  geom_point(size = 5, color = "purple", alpha = 0.8) +
+  geom_smooth(method = "lm", se = TRUE, color = "brown", linetype = "dashed") +
+  geom_text(aes(label = Year), vjust = -0.8, size = 4, fontface = "bold") +
+  labs(title = "MALNUTRITION vs WOMEN ANEMIA",
+       subtitle = "Positive correlation between malnutrition and anemia",
+       x = "Women Anemia (%)", y = "Malnutrition (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+# Combine plots
+grid.arrange(p3, p4, ncol = 2)
+3.5 Infrastructure Impact
+{r
+ws_data <- final_data %>%
+  select(Year, Malnutrition_Percent, Safe_Water_Access, Basic_Sanitation) %>%
+  pivot_longer(cols = c(Safe_Water_Access, Basic_Sanitation), 
+               names_to = "Service", values_to = "Coverage")
+
+p5 <- ggplot(ws_data, aes(x = Year)) +
+  geom_line(aes(y = Malnutrition_Percent, color = "Malnutrition"), size = 2) +
+  geom_line(aes(y = Coverage, color = Service), size = 1.5, linetype = "dashed", alpha = 0.8) +
+  scale_color_manual(values = c("Malnutrition" = "red", 
+                               "Safe_Water_Access" = "blue", 
+                               "Basic_Sanitation" = "green"),
+                     labels = c("Malnutrition", "Safe Water Access", "Basic Sanitation")) +
+  labs(title = "MALNUTRITION vs WATER & SANITATION SERVICES",
+       subtitle = "As water and sanitation improve, malnutrition decreases",
+       y = "Percentage (%)", x = "Year", color = "Indicator") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+        plot.subtitle = element_text(size = 12, hjust = 0.5),
+        legend.position = "bottom",
+        legend.text = element_text(size = 10))
+
+print(p5)
+4. Key Findings
+4.1 Progress Summary
+{r
+# Calculate improvements
+progress <- final_data %>%
+  filter(Year %in% c(2000, 2024)) %>%
+  select(Year, Malnutrition_Percent, Child_Stunting, Women_Anemia, 
+         Safe_Water_Access, Basic_Sanitation) %>%
+  pivot_longer(cols = -Year, names_to = "Indicator", values_to = "Value") %>%
+  pivot_wider(names_from = Year, values_from = Value) %>%
+  mutate(
+    Improvement = round(`2000` - `2024`, 1),
+    Improvement_Percent = round((Improvement/`2000`)*100, 1)
+  )
+
+colnames(progress)[2:3] <- c("Year_2000", "Year_2024")
+
+kable(progress, caption = "Progress Analysis: 2000 to 2024")
+4.2 Statistical Significance
+{r
+cat("## Statistical Significance Tests\n\n")
+
+if(sum(complete.cases(final_data[, c("Malnutrition_Percent", "Child_Stunting")])) >= 3) {
+  cor_test1 <- cor.test(final_data$Malnutrition_Percent, final_data$Child_Stunting)
+  cat("**1. Malnutrition vs Child Stunting:**\n")
+  cat("- Correlation Coefficient:", round(cor_test1$estimate, 3), "\n")
+  cat("- P-value:", round(cor_test1$p.value, 4), "\n")
+  cat("- Significance:", ifelse(cor_test1$p.value < 0.05, "**SIGNIFICANT**", "Not significant"), "\n\n")
+}
+
+if(sum(complete.cases(final_data[, c("Malnutrition_Percent", "Women_Anemia")])) >= 3) {
+  cor_test2 <- cor.test(final_data$Malnutrition_Percent, final_data$Women_Anemia)
+  cat("**2. Malnutrition vs Women Anemia:**\n")
+  cat("- Correlation Coefficient:", round(cor_test2$estimate, 3), "\n")
+  cat("- P-value:", round(cor_test2$p.value, 4), "\n")
+  cat("- Significance:", ifelse(cor_test2$p.value < 0.05, "**SIGNIFICANT**", "Not significant"), "\n\n")
+}
+5. Conclusion
+5.1 Main Conclusions
+Significant Progress: 46.7% reduction in malnutrition rates since 2000
+
+Strong Interrelationships: Malnutrition closely linked with child stunting and women anemia
+
+Infrastructure Role: Water and sanitation improvements coincide with nutrition gains
+
+Complex Health Landscape: Mixed trends across different health indicators
+
+5.2 Recommendations
+Continue successful interventions that have driven malnutrition reduction
+
+Strengthen integrated approaches addressing both nutrition and related health issues
+
+Invest in infrastructure as it shows clear benefits for nutrition outcomes
+
+Focus on women and children as key vulnerable groups
+
+5.3 Limitations
+Limited data points across the time series
+
+Missing values in some indicators
+
+National-level analysis without regional breakdown
+
